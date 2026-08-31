@@ -1,0 +1,2 @@
+#Type Name    ID  GECOS            Home directory     Shell
+u      beacon  -  "beacond daemon" /var/lib/beacond    /usr/bin/nologin

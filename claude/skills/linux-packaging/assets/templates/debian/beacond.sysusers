@@ -1,0 +1,9 @@
+# beacon system user for the beacond daemon. dh_installsysusers installs
+# this to /usr/lib/sysusers.d/beacond.conf and invokes systemd-sysusers from
+# the postinst (see debian/rules). The 'u' type creates both the user and
+# group; the home directory is dedicated to this account, not shared with
+# any other service user, and is created separately via
+# debian/beacond.tmpfiles (systemd-sysusers does not create home
+# directories itself).
+#Type Name   ID GECOS             Home             Shell
+u     beacon -  "beacond daemon"  /var/lib/beacond  /usr/sbin/nologin

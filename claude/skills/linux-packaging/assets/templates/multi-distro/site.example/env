@@ -1,0 +1,15 @@
+# Sourced inside the container before anything reaches the network.
+# Every assignment here is exported.
+#
+# Only needed for values NOT already in your shell -- http_proxy and friends are
+# forwarded automatically when set.
+
+# An internal Go module proxy, if you have one. GOPROXY=off forces vendoring.
+#export GOPROXY=https://goproxy.acme.example/
+#export GOSUMDB=off
+#export GOPRIVATE=git.acme.example/*
+
+# Go fetches its own toolchain when go.mod asks for a newer one than the distro
+# ships. That is an outbound HTTPS request; it must go through the proxy, or the
+# toolchain must already be in the image.
+#export GOTOOLCHAIN=auto

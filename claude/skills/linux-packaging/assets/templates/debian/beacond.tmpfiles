@@ -1,0 +1,12 @@
+# beacond runtime directories. dh_installtmpfiles installs this to
+# /usr/lib/tmpfiles.d/beacond.conf and invokes systemd-tmpfiles from the
+# postinst -- after systemd-sysusers (see debian/rules), so the beacon user
+# already exists when these paths are chowned to it.
+#
+# /var/lib/beacond is the beacon user's $HOME (see debian/beacond.sysusers);
+# beacond does not currently write there, but the directory must exist to
+# match the passwd entry. /var/log/beacond holds rotated log archives (the
+# daemon logs to stderr/the journal directly; see README.md).
+#Type Path              Mode UID    GID    Age Argument
+d     /var/lib/beacond  0750 beacon beacon -
+d     /var/log/beacond  0750 beacon beacon -

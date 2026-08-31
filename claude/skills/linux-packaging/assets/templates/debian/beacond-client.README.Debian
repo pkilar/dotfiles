@@ -1,0 +1,38 @@
+beacond-client for Debian
+==========================
+
+beacon-status queries a beacond instance's /health endpoint:
+
+  beacon-status                      # uses $BEACON_ENDPOINT, default http://127.0.0.1:9911
+  beacon-status -e http://host:9911
+
+Config vs. code under /etc
+---------------------------
+
+/etc/profile.d/beacon-env.sh sets the default BEACON_ENDPOINT for interactive
+login shells. It is CODE, not site configuration, so it is deliberately NOT
+installed as a plain file under /etc: dpkg treats every plain file under
+/etc as a conffile, which means an admin's edit -- however small -- would be
+preserved on every future upgrade, silently freezing that file's fixes out.
+
+Instead, this package installs the real script at
+/usr/lib/beacond/beacon-env.sh (an ordinary package file, not a conffile)
+and /etc/profile.d/beacon-env.sh is a symlink to it (see
+debian/beacond-client.links). A symlink is never tracked as a dpkg conffile,
+so every upgrade replaces the script's actual content unconditionally --
+there is no "edit it and upgrades silently stop applying fixes" trap the way
+there would be for a plain file in the same location.
+
+To customize the endpoint (or anything else) for this host, do NOT edit
+beacon-env.sh -- your changes would be silently overwritten on the next
+upgrade, precisely because it is no longer conffile-protected. Instead
+create /etc/beacon/beacon-site.sh (an empty /etc/beacon directory is shipped
+for this purpose): beacon-env.sh sources it automatically if present, and it
+is entirely yours -- nothing in this package ever creates, touches, or
+removes it.
+
+  echo 'BEACON_ENDPOINT=http://beacon.internal:9911' | sudo tee /etc/beacon/beacon-site.sh
+
+Open a new login shell afterwards so profile.d re-sources the change.
+
+ -- beacond maintainers <beacond@example.com>

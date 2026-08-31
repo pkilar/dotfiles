@@ -1,0 +1,5 @@
+# Copied to /etc/apt/sources.list.d/ for the target whose id matches this
+# filename. Rename without .example. A .sources (deb822) file works too.
+#
+# Empty /etc/apt/sources.list in setup.sh if the defaults are unreachable.
+deb https://mirror.acme.example/debian stable main

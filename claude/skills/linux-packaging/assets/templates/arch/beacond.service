@@ -1,0 +1,48 @@
+[Unit]
+Description=beacond heartbeat daemon
+After=network.target
+
+[Service]
+Type=simple
+User=beacon
+Group=beacon
+WorkingDirectory=/var/lib/beacond
+ExecStart=/usr/bin/beacond
+Restart=on-failure
+RestartSec=5s
+
+# beacond binds a loopback HTTP port (see /etc/beacond/beacond.yaml),
+# reads its config once at startup, and writes nothing to disk, so it
+# can run under a tight sandbox. /var/log/beacond is provisioned by
+# tmpfiles.d for external log rotation, not written by the daemon
+# itself, so it is intentionally not listed below as a writable path.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+# Matches the documented default (loopback-only). An admin who
+# reconfigures listen: to a non-loopback address in beacond.yaml needs
+# to loosen this accordingly -- that is a deliberate paired change, not
+# an oversight.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

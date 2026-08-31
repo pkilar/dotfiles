@@ -1,0 +1,12 @@
+# beacond is built with -buildmode=pie (see debian/rules) for ASLR. That
+# makes it ET_DYN with a PT_INTERP entry, which is exactly what lintian's
+# shared-library heuristic keys on -- but it is an ordinary executable, not
+# a shared library: it has no SONAME, is not meant to be dlopen()ed or
+# linked against, and (CGO_ENABLED=0) has no library prerequisites to lack
+# in the first place. Confirmed against the built binary:
+#   $ file usr/bin/beacond
+#   ELF 64-bit LSB pie executable, x86-64, ..., dynamically linked,
+#   interpreter /lib64/ld-linux-x86-64.so.2, stripped
+# "dynamically linked" here only means it carries an ELF interpreter for the
+# kernel to set up ASLR; there are no actual NEEDED entries to satisfy.
+beacond: shared-library-lacks-prerequisites [usr/bin/beacond]

@@ -1,0 +1,21 @@
+beacond (1.4.2) unstable; urgency=medium
+
+  * Initial Debian packaging. Two binary packages: beacond (the daemon,
+    Architecture: any) and beacond-client (the beacon-status bash client,
+    Architecture: all); the client does not depend on the daemon.
+  * The beacon system user (home /var/lib/beacond, shell /usr/sbin/nologin)
+    and /var/log/beacond are created via sysusers.d/tmpfiles.d, wired into
+    debian/rules explicitly since dh_installsysusers is not auto-sequenced
+    at debhelper compat 13.
+  * /etc/profile.d/beacon-env.sh is shipped as a symlink to
+    /usr/lib/beacond/beacon-env.sh rather than as a plain file: it is code,
+    not site configuration, and dpkg treats every plain file under /etc as a
+    conffile by default. A symlink is never a conffile, so upgrades always
+    replace its target and fixes always land. Site overrides belong in
+    /etc/beacon/beacon-site.sh, which the script sources if present.
+  * beacond.service is left at debhelper's default policy (enable + start on
+    install, restart on upgrade): the packaged config already matches the
+    daemon's built-in defaults and it depends on nothing external, unlike a
+    service that needs site config or another host before it can run.
+
+ -- beacond maintainers <beacond@example.com>  Mon, 17 Aug 2026 12:00:00 +0000

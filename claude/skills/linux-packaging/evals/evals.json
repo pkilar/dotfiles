@@ -1,0 +1,66 @@
+{
+  "skill_name": "linux-packaging",
+  "notes": "Fixtures live in ../../linux-packaging-workspace/fixtures/. One Go daemon (beacond) in several states: beacond (clean, no packaging), beacond-packaged (reference-quality packaging for all formats), beacond-buggy (the reference packaging with precisely-known planted defects — ground truth in fixtures/PLANTED-BUGS.md), and beacond-rpm-only (RPM only, for the port/parity case). Assertions are graded by building and inspecting the produced packages, not by reading the generated files.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "author-from-scratch-all-three",
+      "prompt": "I've got a small Go daemon in this repo — beacond. It's a binary built from cmd/beacond, a bash client script in client/, a config file that installs to /etc/beacond/beacond.yaml, and a profile.d snippet. I need it packaged for RHEL, Debian and Arch. It should run as its own unprivileged system user called beacon, log to /var/log/beacond, and ship a systemd unit. Version comes from the VERSION file. Can you set that up?",
+      "expected_output": "Packaging for all three formats that builds, lints, installs, and preserves site config across an upgrade. Client package is arch-independent in all three. Config preserves site edits; the profile.d script is treated as code where the format allows it.",
+      "files": ["fixtures/beacond"],
+      "assertions": [
+        "RPM spec, Debian tree, and Arch PKGBUILD are all produced",
+        "Each of the three formats actually builds a package (evidence of a real build, not just generated files)",
+        "The client package is architecture-independent in all three: BuildArch noarch, Architecture all, and arch=('any')",
+        "/etc/beacond/beacond.yaml preserves site edits on upgrade: %config(noreplace) in RPM and listed in backup=() in Arch",
+        "/etc/profile.d/beacon-env.sh is treated as CODE, not config: unmarked in RPM's %files and absent from Arch's backup=()",
+        "The Debian conffile conflict for the profile.d script is handled deliberately — either shipped outside /etc and copied in from postinst, or explicitly documented as accepting conffile semantics",
+        "A 'beacon' system user is created idempotently, with its own home directory, and is never deleted on uninstall",
+        "Every custom directory the RPM ships files into has an owning %dir entry",
+        "The Arch packaging does not enable or start the systemd unit, and does not manually invoke systemd-sysusers or systemd-tmpfiles",
+        "debian/rules calls dh_installsysusers explicitly (it is not auto-sequenced at compat 13), before anything chowns to that user",
+        "Every declared runtime dependency name is valid for its target distribution",
+        "The reported outcome distinguishes what was actually verified from what was not"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "audit-inherited-packaging",
+      "prompt": "We inherited the packaging in this repo and nobody here trusts it. Can you go through it and tell me what's actually broken? I care about things that will bite users on upgrade, not style nits.",
+      "expected_output": "A severity-ranked report finding the planted defects with file:line evidence, distinguishing real bugs from linter noise, backed by an actual build/install/upgrade rather than only reading files.",
+      "files": ["fixtures/beacond-buggy"],
+      "assertions": [
+        "Finds planted bug 1: /etc/beacond is an unowned directory in the RPM (files present, no %dir)",
+        "Finds planted bug 2: beacond.yaml is plain %config instead of %config(noreplace), so site edits are lost on upgrade",
+        "Finds planted bug 3: profile.d/beacon-env.sh is wrongly marked %config(noreplace) though it is code",
+        "Finds planted bug 4: the beacond-client subpackage is missing its %license entry",
+        "Finds planted bug 5: %postun runs userdel, deleting an account whose files remain on disk",
+        "Finds planted bug 6: the Arch PKGBUILD dropped beacond.yaml from backup=(), so pacman overwrites site edits with no .pacnew",
+        "Finds planted bug 7: the Arch client package lost its arch=('any') override and is built per-architecture",
+        "Finds planted bug 8: beacond.install manually calls systemd-sysusers/systemd-tmpfiles, duplicating pacman's own hooks",
+        "Finds planted bug 9: beacond.install runs systemctl enable --now, violating Arch's no-auto-enable policy",
+        "Findings are ranked by user impact, with the config-clobbering bugs above cosmetic ones",
+        "Evidence is file:line specific rather than general assertions",
+        "The audit is backed by an actual build and install, not only static reading",
+        "Does not pad the report with more than a couple of false-positive findings"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "port-rpm-to-deb-and-arch",
+      "prompt": "This project only ships an RPM right now. We need Debian and Arch packaging too, matching what the RPM does. Keep them consistent — I don't want the three drifting apart.",
+      "expected_output": "Debian and Arch packaging at parity with the RPM on file layout, users, and config treatment, but each translated into its own format's idiom rather than transliterated from the spec.",
+      "files": ["fixtures/beacond-rpm-only"],
+      "assertions": [
+        "Both Debian and Arch packaging are produced and actually build",
+        "File layout matches the RPM's: same binaries, config, unit, and state directories",
+        "The profile.d code-vs-config distinction is translated per format rather than copied — Arch omits it from backup=(), and the Debian conffile conflict is handled deliberately",
+        "The Arch packaging does not enable the unit, even though the RPM uses %systemd_post",
+        "Dependency names are translated to each distribution's actual package names rather than reused from the spec",
+        "The env file moves to the per-distro location: /etc/default for Debian and /etc/conf.d for Arch",
+        "Version encoding is correct per format rather than copied verbatim",
+        "Parity between the three formats is checked and reported, not just asserted"
+      ]
+    }
+  ]
+}

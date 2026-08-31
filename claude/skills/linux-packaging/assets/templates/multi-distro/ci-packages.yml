@@ -1,0 +1,51 @@
+# Package build matrix. Paste these two jobs into an existing workflow.
+#
+# The target list lives in packaging/targets.tsv, not here. A workflow that
+# restates it is a workflow that drifts, and the drift is invisible: a target
+# quietly stops being built and nobody notices until a user reports it.
+
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@v4
+    # --arches is the graceful degradation. Drop arm64 here if ARM runners are
+    # unavailable and the matrix simply has fewer rows rather than failing.
+    # GitHub's arm64 runners are free for public repos; private repos need a
+    # paid plan, so confirm before making arm64 legs required.
+    - id: gen
+      run: echo "matrix=$(./packaging/targets.sh json --arches amd64,arm64)" >> "$GITHUB_OUTPUT"
+
+  # Builds each target in a clean container and lints the BUILT package, not the
+  # recipe. A recipe that parses proves very little.
+  #
+  # The container supplies the distribution; the runner supplies the
+  # architecture. Nothing is emulated or cross-compiled, so an aarch64 package
+  # is produced by an aarch64 runner -- which is what keeps the result correct
+  # for a project that needs cgo.
+  packages:
+    needs: targets
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # One distribution's failure must not hide another's.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    steps:
+    - uses: actions/checkout@v4
+
+    # No language toolchain setup: the build runs inside the container, on the
+    # toolchain that distribution actually ships, which is the thing being
+    # tested. If the build stages from `git archive HEAD`, this covers the
+    # commit under test -- on a pull request, the merge result.
+    - name: Build and lint ${{ matrix.id }} (${{ matrix.arch }})
+      run: ./packaging/build-in-container.sh ${{ matrix.id }} --lint
+
+    - uses: actions/upload-artifact@v4
+      with:
+        # The architecture is in the path, so artifacts from the two runners
+        # merge without collision.
+        name: packages-${{ matrix.id }}-${{ matrix.arch }}
+        path: dist/
+        if-no-files-found: error
