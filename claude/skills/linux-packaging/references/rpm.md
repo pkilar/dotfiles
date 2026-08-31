@@ -131,12 +131,12 @@ drop in-flight work or where the restart is an outage. Plain `%systemd_postun`
 leaves it running the old binary until someone restarts it. There is no
 universally correct answer — pick one and say why.
 
-**Users.** The modern approach is a shipped `sysusers.d/<pkg>.conf` consumed by
-`%sysusers_create_compat`, which works across old and new targets from one code
-path.
+**Users.** Ship a `sysusers.d/<pkg>.conf` **and** create the account explicitly.
+Neither alone covers every supported target, and the two failure modes point in
+opposite directions.
 
-**If any `%files` entry names the account, the shipped file is mandatory, not
-modern.** rpm's dependency generator turns `%attr(0700,myusr,mygrp)` into
+**Why the shipped file is mandatory.** If any `%files` entry names the account,
+rpm's dependency generator turns `%attr(0700,myusr,mygrp)` into
 `Requires: user(myusr)` and `Requires: group(mygrp)`, and the only thing that
 emits the matching `Provides` is a packaged `sysusers.d` file. A hand-rolled
 `%pre` creates the same account and provides nothing, so the package builds
@@ -146,21 +146,43 @@ clean, lints clean, and then:
 nothing provides user(myusr) needed by mypkg-1.0-1.fc43.x86_64
 ```
 
-dnf refuses the whole transaction. Nothing below tier 3 sees it, and a ladder
-that installs only *one* subpackage will not see it either — see
-`verification.md`.
+dnf refuses the whole transaction, and so does low-level `rpm -i`. Nothing below
+tier 3 sees it, and a ladder that installs only *one* subpackage will not see it
+either — see `verification.md`.
 
-The hand-rolled form remains acceptable on older targets, and only where no
-`%files` entry names the account:
+**Why the shipped file is not sufficient.** `%sysusers_create_compat` does not,
+despite the name, work everywhere from one code path. Measured directly:
+
+| rpm | Distro | Generates `user()`/`group()` from `%attr` | `%sysusers_create_compat` |
+|---|---|---|---|
+| 4.14.3 | RHEL 8 | No | **undefined** — `systemd-rpm-macros` is not installable from default repos |
+| 4.16.1.3 | RHEL 9 | No | defined, **expands to nothing** |
+| 4.20.1 | Fedora 41 | No | defined |
+| 6.0.2 | Fedora 43 | **Yes** | defined, works |
+
+So on RHEL 9 a file-only fix leaves the account uncreated and every `%attr` path
+root-owned, with only a warning to show for it:
+
+```
+warning: group myusr does not exist - using root
+```
+
+The package installs, so tier 3 passes; the ownership is simply wrong. Combine
+both mechanisms — the `getent` guards make the explicit creation a no-op when
+sysusers already ran:
 
 ```spec
 %pre
+%{?sysusers_create_compat:%sysusers_create_compat %{SOURCE1}}
 getent group  mygrp >/dev/null || groupadd -r mygrp
 getent passwd myusr >/dev/null || \
     useradd -r -g mygrp -d /var/lib/myusr -s /sbin/nologin \
             -c "My daemon" myusr
 exit 0
 ```
+
+The `%{?…:…}` guard matters for RHEL 8, where the macro is undefined and would
+otherwise be carried into the scriptlet as literal text.
 
 Two rules that get broken: the guard makes it idempotent (scriptlets rerun), and
 **every distinct service account needs its own home directory.** Two accounts

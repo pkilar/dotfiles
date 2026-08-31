@@ -50,21 +50,74 @@ expand() {  # expand <dir-or-glob> <extension>
 
 # Normalise away differences that are conventional rather than accidental, so
 # the report shows real drift instead of known-good distro divergence.
+#
+# Two classes are filtered, and the distinction matters:
+#
+#   * Conventional path differences (env-file dir, helper dir) are *rewritten* to
+#     a common token, so a file present in all three still compares equal.
+#   * Standard system directories are *dropped*. rpm lists only what %files
+#     declares, while dpkg-deb -c and pacman enumerate every parent directory in
+#     the payload, so /usr/lib/systemd/system appears "missing from rpm" on every
+#     project ever packaged. That is a difference between inspection tools, not
+#     between packages.
+#
+# Package-specific directories are deliberately NOT dropped: one format failing
+# to own /etc/<pkg> or /var/log/<pkg> is a real finding, and the whole point of
+# this check.
 normalise() {
-    sed -e 's|^\./|/|' -e 's|^\([^/]\)|/\1|' \
-        -e 's|^/lib/|/usr/lib/|' \
-        -e 's|^/etc/sysconfig/|/etc/ENVDIR/|' \
-        -e 's|^/etc/default/|/etc/ENVDIR/|' \
-        -e 's|^/etc/conf\.d/|/etc/ENVDIR/|' \
-        -e 's|^/usr/libexec/|/usr/LIBEXEC/|' \
-        -e 's|^/usr/lib/\([a-z0-9_-]*\)/\(.*\.sh\)$|/usr/LIBEXEC/\1/\2|' \
-        -e 's|/$||' \
-    | grep -vE '^/?$' \
-    | grep -vE '^/(\.|$)' \
-    | grep -vE '^/usr/share/(doc|man|licenses)(/|$)' \
-    | grep -vE '^/usr/share/lintian(/|$)' \
-    | grep -vE '^/(usr|etc|var|usr/bin|usr/lib|usr/share|var/log|var/lib)$' \
-    | sort -u
+    awk '
+    BEGIN {
+        # Directories no package should own -- they belong to filesystem,
+        # systemd, or the distro itself. Exact matches only.
+        split("/etc /etc/profile.d /etc/audit /etc/audit/rules.d /etc/systemd \
+               /etc/systemd/system /etc/cron.d /etc/logrotate.d /etc/ld.so.conf.d \
+               /etc/bash_completion.d /etc/ENVDIR \
+               /lib /lib64 /usr /usr/bin /usr/sbin /usr/lib /usr/lib64 /usr/libexec /usr/HELPER \
+               /usr/lib/systemd /usr/lib/systemd/system /usr/lib/systemd/user \
+               /usr/lib/sysusers.d /usr/lib/tmpfiles.d /usr/lib/modules-load.d \
+               /usr/lib/binfmt.d /usr/lib/environment.d /usr/lib/udev \
+               /usr/share /usr/share/doc /usr/share/man /usr/share/licenses \
+               /usr/share/applications /usr/share/metainfo /usr/share/bash-completion \
+               /var /var/log /var/lib /var/cache /run", tmp, " ")
+        for (i in tmp) { gsub(/^[ \t]+|[ \t]+$/, "", tmp[i]); if (tmp[i] != "") sysdir[tmp[i]] = 1 }
+        # Subdirectories of /usr/lib that are system-owned, so /usr/lib/<x> is
+        # NOT a package helper directory.
+        split("systemd sysusers.d tmpfiles.d modules modules-load.d binfmt.d \
+               environment.d udev firmware security pam.d rpm debug .build-id \
+               kernel locale terminfo", tmp2, " ")
+        for (i in tmp2) { gsub(/^[ \t]+|[ \t]+$/, "", tmp2[i]); if (tmp2[i] != "") libsys[tmp2[i]] = 1 }
+    }
+    {
+        p = $0
+        sub(/^\.\//, "/", p); if (p !~ /^\//) p = "/" p
+        sub(/\/+$/, "", p)
+        if (p == "" || p == "/") next
+
+        sub(/^\/lib\//, "/usr/lib/", p)                       # merged-usr
+        # Match the env dir bare as well as with a trailing component: dpkg and
+        # pacman list the directory itself, so /etc/default vs /etc/conf.d would
+        # otherwise read as drift on every project.
+        if (p ~ /^\/etc\/(sysconfig|default|conf\.d)$/) p = "/etc/ENVDIR"
+        else sub(/^\/etc\/(sysconfig|default|conf\.d)\//, "/etc/ENVDIR/", p)
+
+        # Helper directory: /usr/libexec/<pkg> (RPM) == /usr/lib/<pkg> (deb, Arch).
+        # Rewrite BOTH, directory entries included -- matching only files under
+        # them made a bare directory look like drift.
+        if (p ~ /^\/usr\/libexec\//) { sub(/^\/usr\/libexec\//, "/usr/HELPER/", p) }
+        else if (p ~ /^\/usr\/lib\//) {
+            # 3-arg match() is a gawk extension; mawk is Debian default. Do it
+            # with substr/index so the script runs anywhere.
+            rest = substr(p, 10)
+            sl = index(rest, "/")
+            first = (sl ? substr(rest, 1, sl - 1) : rest)
+            if (!(first in libsys) && first !~ /\.so/)
+                p = "/usr/HELPER/" rest
+        }
+
+        if (p in sysdir) next
+        if (p ~ /^\/usr\/share\/(doc|man|licenses|lintian)(\/|$)/) next
+        print p
+    }' | sort -u
 }
 
 collect_rpm()  { for p in $(expand "$1" rpm); do rpm -qlp "$p" 2>/dev/null; done | normalise; }

@@ -266,7 +266,9 @@ podman run --rm -v "$PWD":/src:ro golang:1.26-bookworm bash -c '
 dpkg-deb -I pkg.deb conffiles       # what dpkg will protect on upgrade
 dpkg-deb -c  pkg.deb                # files, modes, owners
 dpkg-deb -e  pkg.deb ./ctrl && cat ./ctrl/p*    # the generated maintainer scripts
-dpkg-parsechangelog -l debian/changelog          # changelog syntax and dates
+dpkg-parsechangelog -l debian/changelog          # top entry only
+dpkg-parsechangelog -l debian/changelog --all --format rfc822   # ALL entries
+dpkg-parsechangelog -l debian/changelog --all --format rfc822 2>&1 >/dev/null  # warnings
 ```
 
 Reading the *generated* maintainer scripts is worth doing at least once per
@@ -276,6 +278,29 @@ routinely contain neither what you expected nor what you feared.
 `scripts/verify-package.sh --format deb` runs build → lint → install → upgrade.
 Pass `--image golang:1.26-bookworm` (or similar) when the project needs a
 toolchain newer than the base image ships.
+
+## Changelog traps
+
+Two that cost real time, both invisible to the build.
+
+**Every entry needs its trailer.** An entry without a closing
+` -- Name <email>  Date` line does not fail `dpkg-buildpackage` — the version on
+line 1 still parses, so the package builds and installs normally. What it does
+is ship a malformed `changelog.gz` in every binary package, parse with no `Date`
+or `Maintainer`, and emit `syntax-error-in-debian-changelog` from lintian. A
+quick structural check catches it before the linter does:
+
+```sh
+[ "$(grep -c '^pkgname (' debian/changelog)" = "$(grep -c '^ --' debian/changelog)" ] \
+    || echo "entry/trailer count mismatch"
+```
+
+**`dpkg-parsechangelog --all` needs `--format rfc822`.** Without it the default
+format emits a single stanza no matter how many entries the file has, so a
+malformed changelog and a healthy one look identical — and it is easy to
+conclude that history has been truncated when it has not. Read the warnings on
+stderr rather than counting stanzas on stdout; the parser tells you exactly
+which line it choked on.
 
 ## lintian triage
 

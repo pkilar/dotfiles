@@ -14,7 +14,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NAME="beacond"
-TOPDIR="$SCRIPT_DIR/rpmbuild"
+# Repo root, not packaging/rpm/. repo-layout.md gitignores build trees as
+# /rpmbuild/, /debbuild/, /archbuild/, and the multi-distro driver globs
+# rpmbuild/RPMS/*/*.rpm from the root -- a tree under packaging/rpm/ builds
+# fine and then reports "NO ARTIFACTS" when driven from there.
+TOPDIR="$REPO_ROOT/rpmbuild"
 
 while [ $# -gt 0 ]; do
     case "$1" in
