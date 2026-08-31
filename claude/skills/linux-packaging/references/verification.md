@@ -46,7 +46,7 @@ get this for free; if they build in place, tier 1 is weaker than it looks.
 
 ## Container traps
 
-Nine things that cost real time:
+Eleven things that cost real time:
 
 1. **`makepkg` refuses to run as root**, by design. Arch builds in a container
    need an unprivileged user and `runuser`.
@@ -69,8 +69,6 @@ Nine things that cost real time:
    toolchain — and treat an unsatisfiable `BuildRequires` as a finding, because
    it means the package cannot be built on its stated target.
 
-Three more, each of which cost someone real debugging time:
-
 7. **`dpkg-buildpackage` writes its output one directory *above* the source
    tree.** If the parent isn't writable by the build user, the build runs to
    completion and then fails at the last step with a permission error. Copy the
@@ -85,7 +83,7 @@ Three more, each of which cost someone real debugging time:
    debhelper's own `[ -d /run/systemd/system ]` guard, so a service not starting
    in a Debian container tells you nothing.
 
-7. **Base images suppress documentation, so doc assertions lie.** The Fedora
+10. **Base images suppress documentation, so doc assertions lie.** The Fedora
    image sets `tsflags=nodocs` in `/etc/dnf/dnf.conf` and the Arch image sets
    `NoExtract` for `usr/share/man/*`. A package containing a man page installs
    without one on disk, so `test -f /usr/share/man/man8/foo.8.gz` fails on a
@@ -93,7 +91,7 @@ Three more, each of which cost someone real debugging time:
    will never fail again. Assert the package *contents* (`rpm -ql`, `pacman -Ql`,
    `dpkg -L`), and lift the suppression if you want the on-disk check too:
    `dnf --setopt=tsflags= install`, or `sed -i '/^NoExtract/d' /etc/pacman.conf`.
-8. **`pacman -U` does not accept `--quiet`.** It exits non-zero having installed
+11. **`pacman -U` does not accept `--quiet`.** It exits non-zero having installed
    nothing, which reads exactly like a broken package. Several package-manager
    flags are subcommand-specific in ways the man page does not make obvious;
    when an install fails, run it once without your convenience flags before
@@ -129,12 +127,6 @@ Omitting the explicit init command silently runs the image's default `CMD` and
 exits immediately. Docker has no `--systemd=always`, which is the concrete
 reason to prefer podman for this tier.
 
-9. **The `archlinux` image sets `NoExtract` for `usr/share/doc/*` and
-   `usr/share/man/*`.** Docs and man pages are registered by `pacman -Ql` but
-   never written to disk, so a test asserting `[ -f /usr/share/doc/pkg/README ]`
-   fails on a package that ships the file correctly. Assert **package
-   ownership** (`pacman -Ql pkg | grep ...`), not on-disk presence — and check
-   `/etc/pacman.conf` before concluding a file is missing.
 
 ## Build recipes
 
@@ -483,6 +475,32 @@ container engine especially, if your own tooling has tests — breaks the packag
 build, not merely the test run. RPM specs frequently omit `%check` while Debian
 and Arch run tests by default, so the same defect fails two formats and passes
 the third, which reads as a distro-specific bug and is not one.
+
+## Verify a fix on a target where the bug was *absent*
+
+When a defect is version- or distro-conditional, the tier that proves the fix is
+not the one where the bug reproduced. It is the one where it did not.
+
+A worked example. RPM packages were uninstallable on rpm 6 because `%files`
+named an account with no `sysusers.d` file to provide it. The obvious fix — ship
+the file, drop the hand-rolled `%pre` — was verified on Fedora 43, where the
+original failure was, and it worked. On RHEL 9 it silently broke a package that
+had been fine: `%sysusers_create_compat` expands to nothing there, so the account
+was never created and every `%attr` path landed root-owned. The install still
+succeeded. Only the ownership was wrong.
+
+The shape recurs whenever a fix is conditional on a version, a macro's presence,
+or a distro's tooling generation:
+
+- the bug is *absent* on the older target, so it is easy to skip;
+- the fix is *active* there anyway, because the recipe is shared;
+- the regression is quiet, because the package still installs.
+
+So: once you know a defect is bounded to some versions, build the matrix from
+the bound. Test the newest affected target to prove the fix, and the newest
+*unaffected* one to prove you did not trade one failure for another. Asserting a
+post-condition — the account exists, the file is owned by it — is what separates
+the two; an exit code will not.
 
 ## What no tier catches
 
