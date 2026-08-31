@@ -1,0 +1,3 @@
+#Type Path              Mode  User    Group   Age  Argument
+d      /var/lib/beacond  0750  beacon  beacon  -
+d      /var/log/beacond  0750  beacon  beacon  -

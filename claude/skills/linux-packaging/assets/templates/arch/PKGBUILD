@@ -1,0 +1,173 @@
+# PKGBUILD for beacond -- split package (beacond, beacond-client).
+#
+# This PKGBUILD packages the same repository it lives in: the daemon and
+# client source is a sibling directory tree (../../ from here), not a
+# downloaded/verified release tarball. See the comment above pkgver=, and
+# the one above source=, for how that is handled honestly rather than
+# faked with an invalid URL or a checksum over nothing.
+
+pkgbase=beacond
+pkgname=('beacond' 'beacond-client')
+
+# Resolve this PKGBUILD's own directory via BASH_SOURCE rather than a
+# tool-provided variable such as $startdir, so pkgver resolves the same
+# way regardless of which bash-based tool sourced this file (makepkg,
+# `namcap PKGBUILD`, ...) as long as it was run from packaging/arch/, which
+# every documented entry point for this package requires anyway.
+_pkgbuild_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+_repo_root=$(CDPATH='' cd -- "$_pkgbuild_dir/../.." && pwd)
+
+# Single source of truth: the repository's top-level VERSION file. Reading
+# it here means pkgver cannot silently drift from what `beacond -version`
+# reports at runtime -- there is no second number to remember to bump.
+pkgver=$(cat "$_repo_root/VERSION")
+pkgrel=1
+
+arch=('x86_64' 'aarch64')
+url='https://github.com/example/beacond'
+license=('MIT')
+makedepends=('go')
+
+# makepkg's automatic debug-package extraction assumes GCC-style DWARF
+# packaging (objcopy --only-keep-debug against a conventional section
+# layout) and does not cope with the Go linker's own debug sections --
+# verified empirically here: with debug left enabled, package_beacond()
+# succeeds but the auto-generated beacond-debug split fails ("*.MTREE: No
+# such file or directory", "bsdtar: **/*: Cannot stat"), which aborts the
+# whole build and leaves no .pkg.tar.zst at all, not even the two good
+# packages. beacond-client is a shell script with no debug info to extract
+# either. strip (below, unaffected by this) still runs on both packages.
+options=('!debug')
+
+# Deliberately no shared depends=() / backup=() here: beacond and
+# beacond-client have disjoint runtime dependencies, and only one of them
+# ships a file that must survive upgrades. Either set at pkgbase level
+# would leak into both package_*() functions below regardless of whether
+# it applies to that subpackage -- see the per-package overrides instead.
+
+# The application source (cmd/, client/, configs/, profile.d/, go.mod,
+# Makefile, VERSION, LICENSE) is intentionally NOT listed in source=: it
+# is not a release artifact, it is the sibling source tree this PKGBUILD
+# is checked into, at the fixed relative path resolved above as
+# $_repo_root. There is nothing to download and nothing meaningful to
+# checksum -- the tree is already on disk at whatever revision the
+# packager has checked out, same as this PKGBUILD file itself. prepare()
+# below copies it into $srcdir rather than building in place, so build()
+# never writes outside packaging/arch/ (which is all this recipe owns).
+#
+# The three entries actually listed here are packaging-owned auxiliary
+# files that live beside this PKGBUILD (systemd unit, sysusers.d,
+# tmpfiles.d). Those are genuine local sources this recipe controls
+# end-to-end, so they get real checksums.
+source=('beacond.service'
+        'beacond.sysusers'
+        'beacond.tmpfiles')
+sha256sums=('1b925d47edb083332409db8e5db1f2dd38372355974b6e3f70b0e7c64676594b'
+            'f4d456dd3f71b148bfda282ec1d1ae8f50e0aceafc02de279298839856ffe6b5'
+            'd44c69d8d52752c52a5d4b71186eec06da6dbdebe28c495096ff431c9b72c8d0')
+
+prepare() {
+  mkdir -p "$srcdir/$pkgbase"
+  cp -a "$_repo_root"/{cmd,client,configs,profile.d,go.mod,Makefile,VERSION,LICENSE} \
+    "$srcdir/$pkgbase/"
+}
+
+build() {
+  cd "$srcdir/$pkgbase"
+
+  case "$CARCH" in
+    x86_64)  export GOARCH=amd64 ;;
+    aarch64) export GOARCH=arm64 ;;
+    *) error "beacond: unsupported CARCH '$CARCH'"; return 1 ;;
+  esac
+  export GOOS=linux
+
+  # Arch Go packaging guidelines: PIE plus external linking gives this
+  # binary the same RELRO/PIE hardening as the rest of the distro's
+  # toolchain-built packages, trimpath keeps the builder's filesystem
+  # paths out of the binary, mod=readonly turns a stray go.sum
+  # inconsistency into a build failure instead of a silent rewrite, and
+  # modcacherw keeps the disposable build-time module cache writable.
+  # go.mod has no require block, so none of this touches the network.
+  export CGO_CPPFLAGS="${CPPFLAGS}"
+  export CGO_CFLAGS="${CFLAGS}"
+  export CGO_CXXFLAGS="${CXXFLAGS}"
+  export CGO_LDFLAGS="${LDFLAGS}"
+  export GOFLAGS='-buildmode=pie -trimpath -mod=readonly -modcacherw'
+  export GOCACHE="$srcdir/go-build-cache"
+  export GOPATH="$srcdir/go"
+
+  # -linkmode=external has to live inside this single -ldflags value
+  # rather than, as the wiki example shows it, inside GOFLAGS: `go build`
+  # keeps only the *last* -ldflags occurrence it sees on the merged
+  # argument list, so splitting the hardening flag and the -X version
+  # stamp across GOFLAGS and a second explicit -ldflags would silently
+  # drop whichever one came first. -buildid= matches the upstream
+  # Makefile's own flag, for the same reproducible-build reason it gives.
+  go build -ldflags "-linkmode=external -X main.version=$pkgver -buildid=" \
+    -o bin/beacond ./cmd/beacond
+}
+
+check() {
+  cd "$srcdir/$pkgbase"
+  export GOFLAGS='-mod=readonly'
+  export GOCACHE="$srcdir/go-build-cache"
+  export GOPATH="$srcdir/go"
+  go vet ./...
+  # No _test.go files exist upstream yet; `go test` still exits 0 and
+  # reports "no test files" rather than failing, so this is harmless today
+  # and starts exercising real tests the moment upstream adds any.
+  go test ./...
+}
+
+package_beacond() {
+  pkgdesc='Small heartbeat daemon with an HTTP /health endpoint'
+  depends=('glibc')
+  backup=('etc/beacond/beacond.yaml')
+
+  cd "$srcdir/$pkgbase"
+
+  install -Dm0755 bin/beacond "$pkgdir/usr/bin/beacond"
+  install -Dm0644 configs/beacond.yaml "$pkgdir/etc/beacond/beacond.yaml"
+
+  install -Dm0644 "$srcdir/beacond.service" \
+    "$pkgdir/usr/lib/systemd/system/beacond.service"
+  install -Dm0644 "$srcdir/beacond.sysusers" \
+    "$pkgdir/usr/lib/sysusers.d/beacond.conf"
+  install -Dm0644 "$srcdir/beacond.tmpfiles" \
+    "$pkgdir/usr/lib/tmpfiles.d/beacond.conf"
+
+  # pacman's systemd hooks (systemd-sysusers.hook / systemd-tmpfiles.hook)
+  # run systemd-sysusers / systemd-tmpfiles against the files above
+  # automatically on install and upgrade. Do not add an .install scriptlet
+  # that calls them again by hand -- namcap flags that as redundant, and
+  # it is: the hooks fire from the mere presence of these files under
+  # usr/lib/sysusers.d/ and usr/lib/tmpfiles.d/.
+  #
+  # Similarly, this package does not enable or start beacond.service.
+  # Arch packages do not enable/start units on install; that is left to
+  # the admin (systemctl enable --now beacond), which the [Install]
+  # section above supports.
+
+  install -Dm0644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_beacond-client() {
+  pkgdesc='Command-line health check client for beacond'
+  arch=('any')
+  depends=('bash' 'curl')
+
+  cd "$srcdir/$pkgbase"
+
+  install -Dm0755 client/beacon-status "$pkgdir/usr/bin/beacon-status"
+
+  # profile.d/beacon-env.sh is code, not site configuration (see
+  # README.md and its own header comment): it must be replaced wholesale
+  # on upgrade so fixes always land, so it deliberately does NOT appear in
+  # this package's backup=() -- there isn't one. Site-local overrides
+  # belong in /etc/beacon/beacon-site.sh, which this file sources if
+  # present, and which no package in this repo ships or owns.
+  install -Dm0644 profile.d/beacon-env.sh "$pkgdir/etc/profile.d/beacon-env.sh"
+
+  install -Dm0644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

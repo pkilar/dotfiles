@@ -1,0 +1,62 @@
+# beacond.service -- systemd unit for the beacond heartbeat daemon.
+#
+# Hardening notes:
+#  - beacond binds only a loopback TCP port and needs no elevated
+#    privileges, so CapabilityBoundingSet/AmbientCapabilities are both
+#    cleared and NoNewPrivileges is set.
+#  - ProtectSystem=strict with no ReadWritePaths= is deliberate: beacond
+#    writes nothing to disk today, it logs to stderr only (see README.md,
+#    "Runtime expectations"). If that changes, add the specific path here
+#    rather than widening ProtectSystem.
+#  - StateDirectory=/LogsDirectory= are intentionally NOT used even though
+#    beacond has both a state and a log directory: those directives default
+#    to mode 0755 and would fight with the 0750 beacon:beacon ownership the
+#    beacond package itself sets on /var/lib/beacond and /var/log/beacond
+#    (see beacond.spec %files) on every service start. Having the package
+#    own those directories directly avoids that drift.
+#  - RestrictAddressFamilies is limited to what a plain HTTP server over
+#    IPv4/IPv6 actually uses. SystemCallFilter is deliberately omitted: it
+#    cannot be exercised by the container-based verification this packaging
+#    was built against (no way to actually start the unit there), and a
+#    wrong syscall allowlist fails closed -- the daemon just won't start --
+#    which is not a trade worth making blind.
+
+[Unit]
+Description=beacond heartbeat daemon
+Documentation=https://github.com/example/beacond
+After=network.target
+
+[Service]
+Type=simple
+User=beacon
+Group=beacon
+EnvironmentFile=-/etc/sysconfig/beacond
+ExecStart=/usr/bin/beacond -config /etc/beacond/beacond.yaml $BEACOND_OPTS
+Restart=on-failure
+RestartSec=2s
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0077
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

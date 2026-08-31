@@ -1,0 +1,26 @@
+pkgbase = beacond
+	pkgver = 1.4.2
+	pkgrel = 1
+	url = https://github.com/example/beacond
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = go
+	options = !debug
+	source = beacond.service
+	source = beacond.sysusers
+	source = beacond.tmpfiles
+	sha256sums = 1b925d47edb083332409db8e5db1f2dd38372355974b6e3f70b0e7c64676594b
+	sha256sums = f4d456dd3f71b148bfda282ec1d1ae8f50e0aceafc02de279298839856ffe6b5
+	sha256sums = d44c69d8d52752c52a5d4b71186eec06da6dbdebe28c495096ff431c9b72c8d0
+
+pkgname = beacond
+	pkgdesc = Small heartbeat daemon with an HTTP /health endpoint
+	depends = glibc
+	backup = etc/beacond/beacond.yaml
+
+pkgname = beacond-client
+	pkgdesc = Command-line health check client for beacond
+	arch = any
+	depends = bash
+	depends = curl

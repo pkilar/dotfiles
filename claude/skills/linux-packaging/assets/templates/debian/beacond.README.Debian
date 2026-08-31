@@ -1,0 +1,27 @@
+beacond for Debian
+===================
+
+The beacond.service unit is installed, enabled, AND started automatically on
+install. This is a deliberate departure from daemons that ship inactive by
+default: beacond needs no site configuration to run correctly (the packaged
+/etc/beacond/beacond.yaml already matches its built-in defaults -- listen
+127.0.0.1:9911, log_level info) and depends on nothing external -- no
+credentials, no other host. If you don't want it running immediately, stop
+and disable it right after install:
+
+  systemctl disable --now beacond
+
+To change the listen address or log level, edit /etc/beacond/beacond.yaml
+(a normal dpkg conffile -- your edits are preserved across upgrades) and:
+
+  systemctl restart beacond
+
+Upgrades restart the service automatically (it is stateless, so this drops
+nothing in flight); see debian/rules if you need to change that policy.
+
+The beacon system user and its directories (/var/lib/beacond, the account's
+home; /var/log/beacond, for rotated log archives) are created automatically
+via systemd-sysusers / systemd-tmpfiles on install, and are never removed by
+this package, including on purge.
+
+ -- beacond maintainers <beacond@example.com>

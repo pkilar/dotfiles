@@ -1,0 +1,5 @@
+# Selected by target id like the others, but the DESTINATION is fixed and
+# UNPREFIXED: /etc/pacman.d/mirrorlist, because pacman.conf includes that exact
+# path. This is the one case where overwriting the shipped file is intended.
+# Rename without .example.
+Server = https://mirror.acme.example/archlinux/$repo/os/$arch

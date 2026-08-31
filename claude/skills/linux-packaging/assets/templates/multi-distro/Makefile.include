@@ -1,0 +1,34 @@
+# Multi-distribution package builds. Include from the project Makefile, or paste
+# these targets into it.
+#
+# Add to .PHONY:  targets lint-packages
+# Add to `help`:  the four lines at the bottom of this file.
+
+# Build one target's packages in a clean container. `make targets` lists them.
+# The container supplies the distribution; this machine supplies the
+# architecture, so a target is buildable only on hardware it declares.
+build-package-%:
+	./packaging/build-in-container.sh $*
+
+lint-package-%:
+	./packaging/build-in-container.sh $* --lint
+
+targets:
+	@./packaging/targets.sh list
+
+# Every target this machine's architecture can build. Unsupported pairs are
+# skipped by name rather than attempted and failed.
+lint-packages:
+	@for t in $$(./packaging/targets.sh list); do \
+		if ./packaging/targets.sh supports $$t $$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/); then \
+			./packaging/build-in-container.sh $$t --lint || exit 1; \
+		else \
+			echo ":: skipping $$t (not buildable on this architecture)"; \
+		fi; \
+	done
+
+# help text:
+#	@echo "  targets                  List the distributions that can be built."
+#	@echo "  build-package-<target>   Build one target in a clean container."
+#	@echo "  lint-package-<target>    Build one target and lint the result."
+#	@echo "  lint-packages            Build and lint every target this machine's arch supports."

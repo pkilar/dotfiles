@@ -1,0 +1,47 @@
+.TH BEACOND 8 "August 2026" "beacond 1.4.2" "System Administration"
+.SH NAME
+beacond \- small heartbeat daemon
+.SH SYNOPSIS
+.B beacond
+[\fB\-config\fR \fIpath\fR]
+[\fB\-version\fR]
+.SH DESCRIPTION
+.B beacond
+is a small, dependency-free heartbeat daemon.
+It reads a tiny config file, listens on a TCP address, and answers
+.B /health
+with a JSON status document and the running build version.
+.PP
+Under this package it runs as the unprivileged
+.B beacon
+system user via the
+.B beacond.service
+systemd unit, which is enabled and started automatically on install \(en see
+.IR /usr/share/doc/beacond/README.Debian .
+.SH OPTIONS
+.TP
+.BI \-config " path"
+Path to the config file.
+Default:
+.IR /etc/beacond/beacond.yaml .
+.TP
+.B \-version
+Print the version and exit.
+.SH FILES
+.TP
+.I /etc/beacond/beacond.yaml
+Site configuration:
+.B listen
+(address to bind) and
+.B log_level
+(one of
+.IR debug " or " info ).
+Preserved across upgrades.
+.TP
+.I /var/log/beacond
+Reserved for rotated log archives.
+The daemon itself logs to stderr, which under systemd goes to the journal.
+.SH SEE ALSO
+.BR beacon-status (1),
+.BR systemd (1),
+.BR journalctl (1)

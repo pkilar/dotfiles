@@ -1,0 +1,113 @@
+#!/usr/bin/make -f
+# beacond Debian packaging. Go >= 1.22 must be on PATH (see debian/control).
+
+export GOOS = linux
+export CGO_ENABLED = 0
+# -trimpath matches the upstream Makefile (reproducible builds); -buildmode=pie
+# adds ASLR, mirroring dpkg-buildflags hardening=+all for the one artifact
+# here that a C toolchain would otherwise get it from automatically. PIE
+# makes the binary ET_DYN with a PT_INTERP entry even though it links
+# against nothing (CGO_ENABLED=0), which is what trips lintian's
+# shared-library-lacks-prerequisites heuristic -- see
+# debian/beacond.lintian-overrides for the justification, confirmed against
+# this package's actual binary.
+export GOFLAGS = -trimpath -buildmode=pie
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+# Confine the module/build caches to the build tree rather than $HOME, which
+# may not exist or be writable under fakeroot or a minimal build chroot.
+export GOCACHE = $(CURDIR)/_build/gocache
+export GOPATH = $(CURDIR)/_build/gopath
+
+DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+ifeq ($(DEB_HOST_ARCH),amd64)
+export GOARCH = amd64
+endif
+ifeq ($(DEB_HOST_ARCH),arm64)
+export GOARCH = arm64
+endif
+
+%:
+	dh $@
+
+# Delegate the actual compile to the upstream Makefile so packaging can't
+# drift from it: `make build` already carries the right -ldflags
+# (-X main.version=$(VERSION) -buildid=) via its own VERSION := $(shell cat
+# VERSION). Split -arch/-indep so an indep-only build (dpkg-buildpackage -A,
+# i.e. beacond-client alone) never invokes the Go toolchain.
+override_dh_auto_build-arch:
+	$(MAKE) build
+
+override_dh_auto_build-indep:
+
+# The build is dependency-free and needs no network (see README.md), so
+# unlike a project whose tests need module downloads, there is no reason to
+# skip them at packaging time: run the Makefile's test target for real.
+override_dh_auto_test-arch:
+	$(MAKE) test
+
+override_dh_auto_test-indep:
+
+override_dh_auto_clean:
+	rm -rf _build bin
+
+# Architecture-dependent package: the daemon. Installed with explicit modes;
+# /etc/beacond/beacond.yaml becomes a conffile automatically (dpkg preserves
+# operator edits on every file under /etc unless told otherwise -- exactly
+# what site configuration needs).
+override_dh_auto_install-arch:
+	install -D -m 0755 bin/beacond debian/beacond/usr/bin/beacond
+	install -D -m 0644 configs/beacond.yaml debian/beacond/etc/beacond/beacond.yaml
+
+# Architecture-independent package: the client. beacon-env.sh is installed
+# OUTSIDE /etc, at usr/lib/beacond/, and only symlinked into
+# /etc/profile.d/ (debian/beacond-client.links). A symlink is never a dpkg
+# conffile, so unlike a plain file under /etc, every upgrade replaces its
+# content unconditionally -- it is code, not site configuration, and must
+# never get "preserved" the way an admin's edit to a real conffile would be.
+# See debian/beacond-client.README.Debian.
+override_dh_auto_install-indep:
+	install -D -m 0755 client/beacon-status debian/beacond-client/usr/bin/beacon-status
+	install -D -m 0644 profile.d/beacon-env.sh debian/beacond-client/usr/lib/beacond/beacon-env.sh
+
+# dh_installsysusers is not in the default dh sequence at compat 13 (it was
+# added as a standalone helper in debhelper 13.6 and only folded into the
+# automatic sequence at compat 14, which is newer than several supported
+# targets). Invoke it explicitly, and BEFORE dh_installtmpfiles, so its
+# postinst snippet creates the beacon user first -- /var/lib/beacond and
+# /var/log/beacond must not be chowned to a user that doesn't exist yet.
+override_dh_installtmpfiles:
+	dh_installsysusers
+	dh_installtmpfiles
+
+# beacond.service is left at dh_installsystemd's default policy: enabled and
+# started on install, restarted (not merely left running the old binary) on
+# upgrade. That default is correct here because, unlike a service that needs
+# site config or another host before it can do anything useful, beacond
+# works out of the box -- the packaged config already matches its built-in
+# defaults -- and it is stateless, so a restart on upgrade drops nothing.
+# See debian/beacond.README.Debian for how an operator opts out.
+
+# REQUIRED, not cosmetic: without this override, the build hard-fails.
+# Verified by temporarily removing it: dh_dwz -a dies with
+#   dwz: debian/beacond/usr/bin/beacond: Found compressed .debug_abbrev
+#   section, not attempting dwz compression
+#   dh_dwz: error: dwz -- debian/beacond/usr/bin/beacond returned exit code 1
+#   dh_dwz: error: Aborting due to earlier error
+# Go's linker compresses DWARF sections by default; dwz (0.15, as shipped in
+# this build image) refuses to touch a compressed .debug_abbrev section and
+# exits 1, which dh_dwz treats as fatal. Skip the dwz pass entirely rather
+# than let one binary's debug-info format abort the whole binary target.
+override_dh_dwz:
+
+# dh_strip is left at its default -- NOT because it produces a beacond-dbgsym
+# package, but because it doesn't need to be told not to: the upstream
+# Makefile builds with -ldflags -buildid= (its own comment explains why: an
+# empty build ID keeps the output byte-reproducible across rebuilds of the
+# same source, which packaging should not fight). dh_strip needs a GNU
+# build-id to link a stripped binary to its extracted debug info, so with
+# none present it correctly still strips /usr/bin/beacond (confirmed: the
+# installed binary reports "stripped" via file(1)) but silently skips
+# creating beacond-dbgsym, logging "Could not find the BuildID" rather than
+# failing the build. Trade-off, not a bug: reproducibility over a debug
+# symbols package. If that trade-off is ever wrong for this project, the fix
+# belongs upstream (drop -buildid= from the Makefile), not here.

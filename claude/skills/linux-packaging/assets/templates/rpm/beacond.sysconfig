@@ -1,0 +1,12 @@
+# Environment overrides for the beacond.service unit.
+#
+# Sourced via EnvironmentFile=-/etc/sysconfig/beacond in beacond.service
+# (the leading '-' there makes this file optional, so removing it is not a
+# startup failure).
+#
+# beacond itself takes no environment variables today. BEACOND_OPTS is an
+# operator extension point for passing extra command-line arguments to the
+# daemon (e.g. an alternate -config path) without editing the packaged unit
+# file or resorting to `systemctl edit`.
+#
+#BEACOND_OPTS=""

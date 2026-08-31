@@ -1,0 +1,23 @@
+# Build targets. The container supplies the distribution; the machine supplies
+# the architecture. Nothing here is emulated or cross-compiled, so a row is
+# buildable only on hardware of a listed architecture.
+#
+# The arches column is load-bearing, not documentation: the official archlinux
+# image publishes amd64 ONLY, so without it CI schedules an Arch leg onto an ARM
+# runner and fails for a reason unrelated to the packaging. Verify before adding
+# a row:
+#   skopeo inspect --raw docker://docker.io/library/<image> |
+#       jq -r '.manifests[].platform.architecture' | sort -u
+#
+# Check the distribution's toolchain too. A compiler too old to bootstrap what
+# the project requires makes the target unbuildable -- Ubuntu 24.04 LTS ships Go
+# 1.22, which cannot fetch a 1.27 toolchain, which is why it is absent here.
+#
+# UBI needs no Red Hat subscription and is the practical way to build for RHEL.
+#
+# id            format  image                                    arches
+fedora          rpm     fedora:latest                            amd64,arm64
+rhel9           rpm     registry.access.redhat.com/ubi9/ubi      amd64,arm64
+rhel10          rpm     registry.access.redhat.com/ubi10/ubi     amd64,arm64
+debian-stable   deb     debian:stable                            amd64,arm64
+arch            arch    archlinux:latest                         amd64

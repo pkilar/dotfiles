@@ -1,0 +1,56 @@
+Source: beacond
+Section: net
+Priority: optional
+Maintainer: beacond maintainers <beacond@example.com>
+# Go >= 1.22 must be on PATH at build time (see go.mod). It is intentionally
+# NOT expressed as a Build-Depends: Debian stable's golang-go can lag behind
+# the go.mod floor (e.g. bookworm ships 1.19), so builds use an upstream Go
+# toolchain instead (the golang:<ver>-bookworm image, or a manually installed
+# one). go.mod's `go 1.22` is the real floor; `go build` fails loudly on an
+# older toolchain rather than silently misbuilding.
+#
+# debhelper (>= 13.6~) is required because debian/rules explicitly invokes
+# dh_installsysusers (added in debhelper 13.6); the bare compat-13 pin alone
+# is satisfied by older debhelper (e.g. 13.3 on Debian 11 bullseye), where
+# that helper does not exist yet.
+Build-Depends: debhelper-compat (= 13), debhelper (>= 13.6~)
+Standards-Version: 4.6.2
+Homepage: https://github.com/example/beacond
+Rules-Requires-Root: no
+
+Package: beacond
+# ${shlibs:Depends} always resolves empty here (CGO_ENABLED=0 -> no dynamic
+# library dependencies to discover) and dpkg-gencontrol warns "substitution
+# variable ${shlibs:Depends} used, but is not defined" on every build.
+# That's expected for a static Go binary, not a sign anything is wrong;
+# ${shlibs:Depends} is kept anyway so this Depends: line does not need a
+# manual audit if CGO or a dynamically-linked dependency is ever
+# introduced. ${misc:Depends} is doing real work below: dh_installsysusers
+# expands it to "systemd | systemd-standalone-sysusers | systemd-sysusers"
+# automatically (verified against the built package), which is the only
+# place that dependency comes from -- there is no explicit `Depends:
+# systemd` in this file.
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: small heartbeat daemon
+ beacond is a small, dependency-free heartbeat daemon. It reads a tiny config
+ file, listens on a TCP address (a loopback port by default, so it needs no
+ elevated capabilities), and answers /health with a JSON status and the
+ running build version.
+ .
+ This package installs the beacond binary, its systemd service, the
+ /etc/beacond/beacond.yaml config, and creates the dedicated beacon system
+ user under which it runs. The service works out of the box: the packaged
+ config already matches the daemon's built-in defaults.
+
+Package: beacond-client
+Architecture: all
+Depends: ${misc:Depends}, curl
+Description: status client for beacond
+ beacon-status is a small, architecture-independent bash client that queries
+ a beacond instance's /health endpoint and reports whether it answered.
+ .
+ This package does not depend on beacond itself: it only needs network
+ access to a beacond endpoint, which is commonly a different host. It also
+ installs /etc/profile.d/beacon-env.sh, which sets the default
+ BEACON_ENDPOINT for interactive login shells.

@@ -1,0 +1,46 @@
+.TH BEACON-STATUS 1 "August 2026" "beacond 1.4.2" "User Commands"
+.SH NAME
+beacon-status \- query a beacond instance's health endpoint
+.SH SYNOPSIS
+.B beacon-status
+[\fB\-e\fR \fIendpoint\fR]
+[\fB\-h\fR]
+.SH DESCRIPTION
+.B beacon-status
+queries a running
+.BR beacond (8)
+instance's
+.B /health
+endpoint with
+.BR curl (1)
+and prints the JSON response.
+Exit status is 0 when the beacon answers, 1 otherwise.
+.SH OPTIONS
+.TP
+.BI \-e " endpoint"
+beacond base URL.
+Default: the
+.B BEACON_ENDPOINT
+environment variable, or
+.I http://127.0.0.1:9911
+if that is unset.
+.TP
+.B \-h
+Show a short usage message and exit.
+.SH ENVIRONMENT
+.TP
+.B BEACON_ENDPOINT
+Default endpoint, normally set by
+.IR /etc/profile.d/beacon-env.sh .
+See
+.I /usr/share/doc/beacond-client/README.Debian
+for how to override it per host without editing that file directly.
+.SH EXIT STATUS
+.TP
+.B 0
+beacond answered.
+.TP
+.B 1
+beacond did not answer, or curl is not installed.
+.SH SEE ALSO
+.BR beacond (8)

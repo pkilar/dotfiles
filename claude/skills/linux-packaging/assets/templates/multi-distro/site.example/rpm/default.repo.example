@@ -1,0 +1,11 @@
+# The fallback: used for any rpm target that has no <target-id>.repo of its own.
+# Rename without .example.
+#
+# Worth having when several targets share a mirror -- $releasever below serves
+# rhel9 and rhel10 from this one file, so neither needs its own.
+[acme-internal]
+name=Acme internal mirror
+baseurl=https://mirror.acme.example/rhel/$releasever/$basearch/os/
+enabled=1
+gpgcheck=1
+gpgkey=https://mirror.acme.example/RPM-GPG-KEY-acme

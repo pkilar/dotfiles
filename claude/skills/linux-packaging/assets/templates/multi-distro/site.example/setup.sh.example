@@ -1,0 +1,16 @@
+#!/bin/sh
+# Runs LAST, after env, CA anchors and repo files are in place, so it can
+# override any of them. Rename without .example and chmod +x to enable.
+#
+# Its usual job: remove the distribution's own mirrors, which are unreachable
+# from here and will fail the first install before your mirror is consulted.
+set -eu
+
+# Remove defaults BY NAME. A glob would take the site files placed a moment ago.
+rm -f /etc/yum.repos.d/ubi.repo /etc/yum.repos.d/fedora*.repo   # RHEL / Fedora
+# : > /etc/apt/sources.list                                      # Debian / Ubuntu
+
+# If the proxy needs credentials that cannot be in env, write them where only
+# the package manager reads them:
+# printf 'proxy=http://proxy.acme.example:3128\nproxy_username=%s\nproxy_password=%s\n' \
+#     "$PROXY_USER" "$PROXY_PASS" >> /etc/dnf/dnf.conf

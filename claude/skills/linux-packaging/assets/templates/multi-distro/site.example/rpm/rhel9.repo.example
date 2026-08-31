@@ -1,0 +1,19 @@
+# Installed ONLY for the target whose id matches this filename -- rhel9.repo for
+# the rhel9 target. Rename without .example.
+#
+# It lands as /etc/yum.repos.d/00-site-rhel9.repo, NOT rhel9.repo: a target id
+# is often the distribution's own repo filename (fedora.repo, rocky.repo and
+# ubi.repo all ship there), and overwriting one deletes the base repository.
+#
+# One repository file is installed per build, chosen by target id, so this
+# directory can hold rhel9.repo, rhel10.repo and fedora.repo side by side
+# without them colliding.
+#
+# The distribution's own repos are still present and probably unreachable --
+# disable them in setup.sh, by name, or dnf fails on them before reaching this.
+[acme-rhel9]
+name=Acme internal mirror for RHEL 9
+baseurl=https://mirror.acme.example/rhel/9/$basearch/os/
+enabled=1
+gpgcheck=1
+gpgkey=https://mirror.acme.example/RPM-GPG-KEY-acme
